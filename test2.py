@@ -37,45 +37,38 @@ from torch.autograd.variable import Variable
 from torchvision import transforms, datasets
 from multiprocessing import freeze_support
 import time
-import progressbar
-p = progressbar.ProgressBar()
+
 
 import gc;
 gc.collect()
 
 BASE_DIR = os.path.abspath('')
-dataset_LDCT = os.path.abspath(os.path.join(BASE_DIR, "..", "LoDoPaB_CT_Dataset"))
 datasave_kaggle = os.path.abspath(os.path.join(BASE_DIR, "..", "GAN_RESULT", "2020_11_13"))
-print(dataset_LDCT)
 print(BASE_DIR)
 
 
-img_dir = os.path.join(dataset_LDCT, "ground_truth_test")
-val_dir = os.path.join(dataset_LDCT, "ground_truth_validation")
-
-for i in range(1):
-    fig = plt.figure(figsize=(20, 15))
-    ax1 = fig.add_subplot(1, 3, 1)
-    ax2 = fig.add_subplot(1, 3, 2)
-    ax3 = fig.add_subplot(1, 3, 3)
-    ax1.axis('off')
-    ax2.axis('off')
-    ax3.axis('off')
-    ax1.set_title("Noisy image")
-    ax2.set_title("Denoised image")
-    ax3.set_title("Ground-truth")
-
-    if only_noise:
-        ax1.imshow(inputs, cmap='gray')
-        ax2.imshow(inputs - outputs[0], cmap='gray')
-        ax3.imshow(inputs - ground_truth[0], cmap='gray')
-    else:
-        ax1.imshow(inputs, cmap='gray')
-        ax2.imshow(outputs, cmap='gray')
-        ax3.imshow(ground_truth, cmap='gray')
-    img_path = os.path.join(datasave_kaggle, ''epoch_", epoch)
+for epoch in range(1):
+    # fig = plt.figure(figsize=(20, 15))
+    # ax1 = fig.add_subplot(1, 3, 1)
+    # ax2 = fig.add_subplot(1, 3, 2)
+    # ax3 = fig.add_subplot(1, 3, 3)
+    # ax1.axis('off')
+    # ax2.axis('off')
+    # ax3.axis('off')
+    # ax1.set_title("Noisy image")
+    # ax2.set_title("Denoised image")
+    # ax3.set_title("Ground-truth")
+    #
+    # if only_noise:
+    #     ax1.imshow(inputs, cmap='gray')
+    #     ax2.imshow(inputs - outputs[0], cmap='gray')
+    #     ax3.imshow(inputs - ground_truth[0], cmap='gray')
+    # else:
+    #     ax1.imshow(inputs, cmap='gray')
+    #     ax2.imshow(outputs, cmap='gray')
+    #     ax3.imshow(ground_truth, cmap='gray')
+    img_path = os.path.join(datasave_kaggle, "epoch_", str(epoch))
     if plot:
         plt.show()
     fig.savefig("imgs/epoch_" + epoch, dpi=200)
 
- img_path = os.path.join(datasave_kaggle, ''epoch_", epoch)
