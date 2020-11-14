@@ -43,12 +43,12 @@ import gc;
 gc.collect()
 
 BASE_DIR = os.path.abspath('')
-datasave_kaggle = os.path.abspath(os.path.join(BASE_DIR, "..", "GAN_RESULT", "2020_11_13"))
+datasave_kaggle = os.path.abspath(os.path.join(BASE_DIR, "..", "Lowdose_program", "GAN_RESULT", "2020_11_13"))
 print(BASE_DIR)
 
 
 for epoch in range(1):
-    # fig = plt.figure(figsize=(20, 15))
+    fig = plt.figure(figsize=(20, 15))
     # ax1 = fig.add_subplot(1, 3, 1)
     # ax2 = fig.add_subplot(1, 3, 2)
     # ax3 = fig.add_subplot(1, 3, 3)
@@ -67,8 +67,7 @@ for epoch in range(1):
     #     ax1.imshow(inputs, cmap='gray')
     #     ax2.imshow(outputs, cmap='gray')
     #     ax3.imshow(ground_truth, cmap='gray')
-    img_path = os.path.join(datasave_kaggle, "epoch_", str(epoch))
-    if plot:
-        plt.show()
-    fig.savefig("imgs/epoch_" + epoch, dpi=200)
+    img_path = os.path.join(datasave_kaggle, "epoch_" + str(epoch))
+
+    fig.savefig(img_path, dpi=200)
 
