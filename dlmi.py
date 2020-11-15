@@ -64,7 +64,7 @@ dim = 64
 out_shape = 8
 BASE_DIR = os.path.abspath('')
 dataset_LDCT = os.path.abspath(os.path.join(BASE_DIR, "..", "LoDoPaB_CT_Dataset"))
-datasave_kaggle = os.path.abspath(os.path.join(BASE_DIR, "..", "GAN_RESULT", "2020_11_13"))
+datasave_kaggle = os.path.abspath(os.path.join(BASE_DIR, "..", "Lowdose_program", "GAN_RESULT", "2020_11_13"))
 print(dataset_LDCT)
 print(BASE_DIR)
 
@@ -484,7 +484,8 @@ if __name__ == '__main__':
                 ax3.imshow(ground_truth, cmap='gray')
             if plot:
                 plt.show()
-            fig.savefig("imgs/epoch_" + epoch, dpi=200)
+            img_save_path = os.path.join(datasave_kaggle, "epoch_" + str(epoch))
+            fig.savefig(img_save_path, dpi=300)
 
 
     def display_status(epoch, num_epochs, n_batch,
@@ -544,8 +545,9 @@ if __name__ == '__main__':
     name = '_wgan_vgg'
 
 # %%
-    for epoch in range(num_epochs):
-        for n_batch, (input_img, real_data) in enumerate(data_loader):
+    for epoch in tqdm(range(num_epochs), desc= "Plot"):
+        time.sleep(0.5)
+        for n_batch, (input_img, real_data) in tqdm(enumerate(data_loader), desc="Learning"):
             time.sleep(0.01)
             real_data = Variable(real_data)
             # if torch.cuda.is_available():
@@ -596,21 +598,21 @@ if __name__ == '__main__':
                 gc.collect()
 
 # %%
-    fig, ax = plt.subplots(4, 2, figsize=(30, 20))
-    ax = ax.flatten()
-    i = 0
-    for key, values in loss_function.items():
-        #     if key in ['SSIM', 'loss_vgg', 'PSNR']:
-        ax[i].plot(values['test'][2:], label='test')
-        ax[i].plot(values['train'][2:], label='train')
-        ax[i].set_title(key)
-        ax[i].legend(loc='best')
-        i = i + 1
+#     fig, ax = plt.subplots(4, 2, figsize=(30, 20))
+#     ax = ax.flatten()
+#     i = 0
+#     for key, values in loss_function.items():
+#         #     if key in ['SSIM', 'loss_vgg', 'PSNR']:
+#         ax[i].plot(values['test'][2:], label='test')
+#         ax[i].plot(values['train'][2:], label='train')
+#         ax[i].set_title(key)
+#         ax[i].legend(loc='best')
+#         i = i + 1
 
-    # %%
-    torch.save(generator.state_dict(), 'generator' + name)
-    torch.save(discriminator.state_dict(), 'discriminator' + name)
-
-    save(name, loss_function)
-    fig.savefig('loss_gen' + name + '.png')
+    # # %%
+    # torch.save(generator.state_dict(), 'generator' + name)
+    # torch.save(discriminator.state_dict(), 'discriminator' + name)
+    #
+    # np.save(name, loss_function)
+    # fig.savefig('loss_gen' + name + '.png')
 
