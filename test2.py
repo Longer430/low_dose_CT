@@ -67,7 +67,7 @@ for epoch in range(1):
     #     ax1.imshow(inputs, cmap='gray')
     #     ax2.imshow(outputs, cmap='gray')
     #     ax3.imshow(ground_truth, cmap='gray')
-    img_path = os.path.join(datasave_kaggle, "epoch_" + str(epoch))
+    img_save_path = os.path.join(datasave_kaggle, "epoch_" + str(epoch))
 
-    fig.savefig(img_path, dpi=200)
+    fig.savefig(img_save_path, dpi=200)
 
