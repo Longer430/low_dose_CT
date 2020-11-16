@@ -319,8 +319,8 @@ for param in features_extractor.parameters():
 
 # %%
 Lambda = 10
-batch_size = 32   # 32 will make storage run out of storage
-num_epochs = 1
+batch_size = 16   # 32 will make storage run out of storage
+num_epochs = 50
 
 # %%
 only_noise = False
@@ -545,10 +545,9 @@ if __name__ == '__main__':
     name = '_wgan_vgg'
 
 # %%
-    for epoch in tqdm(range(num_epochs), desc= "Plot"):
-        time.sleep(0.5)
-        for n_batch, (input_img, real_data) in tqdm(enumerate(data_loader), desc="Learning"):
-            time.sleep(0.01)
+    for epoch in range(num_epochs):
+        print(epoch)
+        for n_batch, (input_img, real_data) in enumerate(data_loader):
             # real_data = Variable(real_data)  # transfer to tensor step. Change to dataset
             # if torch.cuda.is_available():
             #     real_data = real_data.cuda()
