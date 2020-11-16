@@ -69,7 +69,7 @@ print(dataset_LDCT)
 print(BASE_DIR)
 
 # %%
-img_dir = os.path.join(dataset_LDCT, "ground_truth_train")
+img_dir = os.path.join(dataset_LDCT, "ground_truth_validation")
 name_list = list()
 for root, _, files in os.walk(img_dir):
     for subfile in files:
@@ -549,7 +549,7 @@ if __name__ == '__main__':
         time.sleep(0.5)
         for n_batch, (input_img, real_data) in tqdm(enumerate(data_loader), desc="Learning"):
             time.sleep(0.01)
-            real_data = Variable(real_data)
+            # real_data = Variable(real_data)  # transfer to tensor step. Change to dataset
             # if torch.cuda.is_available():
             #     real_data = real_data.cuda()
             # if torch.cuda.is_available():
