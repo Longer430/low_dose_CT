@@ -157,7 +157,7 @@ class NoisyDataset(torch.utils.data.Dataset):
         # img = imageio.imread(self.img_dict[image_id]['path']).astype(np.uint8)
         img = self.img_dict[image_id]['path']
         # standardize it
-        img = (img - img.min()) /(img.max() - img.min())
+        #img = (img - img.min()) /(img.max() - img.min())
         # downsample the images' size (to speed up training)
         img = resize(img, (dim, dim))
 
