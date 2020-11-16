@@ -43,12 +43,50 @@ import gc;
 gc.collect()
 
 BASE_DIR = os.path.abspath('')
-datasave_kaggle = os.path.abspath(os.path.join(BASE_DIR, "..", "Lowdose_program", "GAN_RESULT", "2020_11_13"))
+dataset_LDCT = os.path.abspath(os.path.join(BASE_DIR, "..", "LoDoPaB_CT_Dataset"))
+datasave_kaggle = os.path.abspath(os.path.join(BASE_DIR, "..", "test_PIC", "2020_11_13"))
 print(BASE_DIR)
 
+# %%
+img_dir = os.path.join(dataset_LDCT, "ground_truth_validation")
+name_list = list()                                          # validation images paths
+for root, _, files in os.walk(img_dir):
+    for subfile in files:
+        img_path = os.path.join(root, subfile)
+        name_list.append(img_path)
 
-for epoch in range(1):
+X_train = [h5py.File(i, 'r')['data'] for i in name_list]
+
+img_dir_test = os.path.join(dataset_LDCT, "ground_truth_test")
+name_list_test = list()                                     # test images paths
+for root, _, files in os.walk(img_dir_test):
+    for subfile in files:
+        img_path = os.path.join(root, subfile)
+        name_list_test.append(img_path)
+
+X_test = [h5py.File(i, 'r')['data'] for i in name_list_test]
+X_train = X_train + X_test
+
+# %%
+img_list = list()
+for k in range(3):
+    for i in range(128):
+        img_list.append(X_train[k][i])
+val_list = list()
+for k in range(1):
+    for i in range(128):
+        val_list.append(X_train[k][i])
+
+for i in range(3):
+    np.random.seed(0)
     fig = plt.figure(figsize=(20, 15))
+    plt.imshow(img_list[i])
+    plt.show()
+    img_path = os.path.join(datasave_kaggle, "i_" + str(i))
+    fig.savefig(img_path, dpi=200)
+
+
+
     # ax1 = fig.add_subplot(1, 3, 1)
     # ax2 = fig.add_subplot(1, 3, 2)
     # ax3 = fig.add_subplot(1, 3, 3)
@@ -67,7 +105,5 @@ for epoch in range(1):
     #     ax1.imshow(inputs, cmap='gray')
     #     ax2.imshow(outputs, cmap='gray')
     #     ax3.imshow(ground_truth, cmap='gray')
-    img_save_path = os.path.join(datasave_kaggle, "epoch_" + str(epoch))
 
-    fig.savefig(img_save_path, dpi=200)
 
