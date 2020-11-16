@@ -70,7 +70,7 @@ print(BASE_DIR)
 
 # %%
 img_dir = os.path.join(dataset_LDCT, "ground_truth_validation")
-name_list = list()
+name_list = list()                                          # validation images paths
 for root, _, files in os.walk(img_dir):
     for subfile in files:
         img_path = os.path.join(root, subfile)
@@ -79,7 +79,7 @@ for root, _, files in os.walk(img_dir):
 X_train = [h5py.File(i, 'r')['data'] for i in name_list]
 
 img_dir_test = os.path.join(dataset_LDCT, "ground_truth_test")
-name_list_test = list()
+name_list_test = list()                                     # test images paths
 for root, _, files in os.walk(img_dir_test):
     for subfile in files:
         img_path = os.path.join(root, subfile)
@@ -157,7 +157,7 @@ class NoisyDataset(torch.utils.data.Dataset):
         # img = imageio.imread(self.img_dict[image_id]['path']).astype(np.uint8)
         img = self.img_dict[image_id]['path']
         # standardize it
-        #         img = (img - img.min()) /(img.max() - img.min())
+        img = (img - img.min()) /(img.max() - img.min())
         # downsample the images' size (to speed up training)
         img = resize(img, (dim, dim))
 
