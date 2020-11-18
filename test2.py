@@ -49,7 +49,7 @@ dataset_LDCT = os.path.abspath(os.path.join(BASE_DIR, "..", "LoDoPaB_CT_Dataset"
 datasave_kaggle = os.path.abspath(os.path.join(BASE_DIR, "..", "test_PIC", "2020_11_13"))
 print(BASE_DIR)
 
-# %%
+# %% path
 img_dir = os.path.join(dataset_LDCT, "ground_truth_validation")
 name_list = list()                                          # validation images paths
 for root, _, files in os.walk(img_dir):
@@ -86,7 +86,7 @@ only_noise = False
 img_transform = copy.deepcopy(img_list)
 img_transform_show =list()
 train_transform = transforms.Compose([
-        # transforms.Resize((32, 32)),
+        # transforms.Resize((dim, dim)),
         #transforms.RandomCrop(32, padding=4),
         transforms.ToTensor(),
         transforms.Normalize(0, 0.015),])
@@ -94,47 +94,40 @@ train_transform = transforms.Compose([
 
 # standardize it
 
-for i in range(len(img_transform)):
-    # normarlize
-    # img_transform[i] = (img_transform[i] - img_transform[i].min()) / (img_transform[i].max() - img_transform[i].min())
-    # downsample the images' size (to speed up training)
-    img_transform[i] = resize(img_transform[i], (dim, dim))
+for img_i in img_transform:
+    print(img_i.shape)
     # noise
-    noise_type = "gaussian"               # only write Gaussian now
+    noise_type = "gaussian"
     if noise_type == "gaussian":
-        noise = np.random.normal(0, 0.015, img_transform[i].shape)
-    img_transform[i] = img_transform[i] + noise
-    img_transform[i] = (img_transform[i] - img_transform[i].min()) / (img_transform[i].max() - img_transform[i].min())
+        noise = np.random.normal(0, 0.015, img_i.shape)
+    # TODO: add the other noise
+    img_i = img_i + noise
     # if residual learning, ground-truth should be the noise
-    if only_noise:
-        img = noise
-    img_transform[i] = train_transform(img_transform[i])
-    img_transform_show.append(torch.clone(img_transform[i]))
-    img_transform_show[i] = torch.tensor_to_np(img_transform_show[i])
+    # TODO: add 'if only noise'
+    img_i = train_transform(img_i)
+
     # TODO: show tensor image
     # FIXME: 3D TO 2D when in whole coding
     # TODO: tensor squeeze
 
 
-# plot
-
-
-
-for j in range(2):
-    fig = plt.figure(figsize=(20, 15))
-    ax1 = fig.add_subplot(1, 2, 1)
-    ax2 = fig.add_subplot(1, 2, 2)
-    ax1.axis('off')
-    ax2.axis('off')
-    ax1.set_title("image")
-    ax2.set_title("image transform")
-    only_noise = True
-    if only_noise:
-        ax1.imshow(img_list[j], cmap='gray')
-        ax2.imshow(img_transform_show[j], cmap='gray')
-    plt.show()
-    img_path = os.path.join(datasave_kaggle, "test_one_dim64" + str(j))
-    fig.savefig(img_path, dpi=200)
+# # plot
+#
+# for j in range(2):
+#     fig = plt.figure(figsize=(20, 15))
+#     ax1 = fig.add_subplot(1, 2, 1)
+#     ax2 = fig.add_subplot(1, 2, 2)
+#     ax1.axis('off')
+#     ax2.axis('off')
+#     ax1.set_title("image")
+#     ax2.set_title("image transform")
+#     only_noise = True
+#     if only_noise:
+#         ax1.imshow(img_list[j], cmap='gray')
+#         ax2.imshow(img_transform_show[j], cmap='gray')
+#     plt.show()
+#     img_path = os.path.join(datasave_kaggle, "test_one_dim64" + str(j))
+#     fig.savefig(img_path, dpi=200)
 
 
 
@@ -148,9 +141,10 @@ for j in range(2):
 #     img_path = os.path.join(datasave_kaggle, "i_" + str(i))
 #     fig.savefig(img_path, dpi=200)
 
-
-
-
-
+a = torch.Tensor([[1.], [2.], [3.], [4.]])
+#a = torch.Tensor([[[[1.], [2.], [3.], [4.]]]])
+#a = torch.Tensor([1, 2, 3, 4])
+arr = np.array([[1, 2, 3], [4, 5, 6]])
+print(arr.shape)
 
 
