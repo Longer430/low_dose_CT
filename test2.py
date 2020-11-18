@@ -108,7 +108,7 @@ for img_i in img_transform:
 
     # TODO: show tensor image
     # FIXME: 3D TO 2D when in whole coding
-    # TODO: tensor squeeze
+    # TODO: tensor squeeze test one
 
 
 # # plot
