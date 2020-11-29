@@ -13,15 +13,17 @@ A.
 # %%
 # General Libraries
 import os
+
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 import random
 import shutil
 import matplotlib.pyplot as plt
 from IPython import display
-
+# from utils import Logger
+# Pytorch Libraries
 import torch
 import torchvision as tv
-from torchvision import transforms
+import torchvision.transforms as T
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
@@ -32,11 +34,13 @@ import h5py
 import torchvision.models as models
 # Modelisation Libraries
 import numpy as np
+from PIL import Image
 from tqdm import tqdm
 from glob import glob  # only glob2
 
 import imageio
 import matplotlib.pyplot as plt
+from skimage.transform import resize
 
 from IPython import display
 # from utils import Logger
@@ -44,38 +48,27 @@ import torch
 from torch import nn, optim
 from torch import autograd
 from torch.autograd.variable import Variable
-from torch.utils.data import Dataset, DataLoader
+from torchvision import transforms, datasets
 from multiprocessing import freeze_support
 import time
-from Noisedataset import Noisedataset
+import progressbar
+p = progressbar.ProgressBar()
 
-# test
-import psutil
-import sys
-import gc
+import gc;
+gc.collect()
 
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-
-
-# parameters
+# %%
 dim = 64
 out_shape = 8
-data_augmentation_factor = 1
-# %%
-Lambda = 10
-batch_size = 16   # 32 will make storage run out of storage
-num_epochs = 1
-
-device = torch.device("cuda")
-
-# ============================ step 0/5 data ============================
 BASE_DIR = os.path.abspath('')
 dataset_LDCT = os.path.abspath(os.path.join(BASE_DIR, "..", "LoDoPaB_CT_Dataset"))
 datasave_kaggle = os.path.abspath(os.path.join(BASE_DIR, "..", "Lowdose_program", "GAN_RESULT", "2020_11_13"))
 print(dataset_LDCT)
 print(BASE_DIR)
 
-# %% read
+# %%
 img_dir = os.path.join(dataset_LDCT, "ground_truth_validation")
 name_list = list()                                          # validation images paths
 for root, _, files in os.walk(img_dir):
@@ -94,39 +87,111 @@ for root, _, files in os.walk(img_dir_test):
 
 X_test = [h5py.File(i, 'r')['data'] for i in name_list_test]
 X_train = X_train + X_test
-# TODO: check in paper
-print(sys.getsizeof(X_train) / 1024 / 1024, 'MB')
 
-# %% resize
-img_data = list()
+# %%
+img_list = list()
 for k in range(49):
     for i in range(128):
-        img_data.append(X_train[k][i])
-val_data = list()
+        img_list.append(X_train[k][i])
+val_list = list()
 for k in range(49, 54):
     for i in range(128):
-        val_data.append(X_train[k][i])
+        val_list.append(X_train[k][i])
+print(len(val_list))
+print(len(img_list))
 
-# %% show one image
+# %%
 plt.imshow(X_train[0][26])
 
-'''
-- norm_mean: mean of the training set - used for standardization
-- norm_std: standard deviation of the training set - used for standardization
-'''
 
-train_transform = transforms.Compose([
-   # transforms.Resize((dim, dim)),
-    transforms.ToTensor(),
-])
+# %%
+class NoisyDataset(torch.utils.data.Dataset):
 
-valid_transform = transforms.Compose([
-   # transforms.Resize((dim, dim)),
-    transforms.ToTensor(),
-])
-# TODO: No normalise?
+    def __init__(self, img_list, data_augmentation_factor, mu, var, transforms=True, only_noise=False, name="train"):
+        """
+        Arguments:
+            - img_list: list of the images paths
+            - data_augmentation_factor: int - number of times an image is augmented. Set
+            it to 0 if no augmentation is wanted.
+            - mu: mean of the training set - used for standardization
+            - var: standard deviation of the training set - used for standardization
+            - transforms: bool - indicates whether to apply data augmentation 
+            - name: string - name of the dataset (train, validation or test)
+            - only_noise: bool - whether or not to do residual learning
+        """
+        np.random.seed(0)
 
-# ============================ step 2/5 generator ============================
+        if not data_augmentation_factor:
+            self.data_augmentation_factor = 1
+        else:
+            self.data_augmentation_factor = data_augmentation_factor
+        self.img_list = img_list
+        self.transforms = transforms
+        self.only_noise = only_noise
+        self.name = name
+        self.mean = mu
+        self.std = var
+
+        # Create dictionary that maps each image to some specific noise and the
+        # image's path
+        dicts = []
+        for image_path in img_list:
+            for _ in range(self.data_augmentation_factor):
+
+                # Define noise to be applied
+                p = np.random.rand()
+                if p < 1:
+                    noise_type = "gaussian"
+                else:
+                    noise_type = "speckle"
+
+                # Add image-noise pair information to the info dictionary
+                dicts.append({'path': image_path,
+                              'noise': noise_type})
+        self.img_dict = {image_id: info for image_id, info in enumerate(dicts)}
+
+    def __getitem__(self, image_id):
+        np.random.seed(0)
+
+        # load image
+        # img = imageio.imread(self.img_dict[image_id]['path']).astype(np.uint8)
+        img = self.img_dict[image_id]['path']
+        # standardize it
+        #img = (img - img.min()) /(img.max() - img.min())
+        # downsample the images' size (to speed up training)
+        img = resize(img, (dim, dim))
+
+        # create noisy image
+        noise_type = self.img_dict[image_id]['noise']
+        if noise_type == "gaussian":
+            noise = np.random.normal(0, 0.015, img.shape)
+        elif noise_type == "speckle":
+            noise = img * np.random.randn(img.shape[0], img.shape[1]) / 5
+        noisy_img = img + noise
+        noisy_img = (noisy_img - noisy_img.min()) / (noisy_img.max() - noisy_img.min())
+        # if residual learning, ground-truth should be the noise
+        if self.only_noise:
+            img = noise
+
+        # convert to PIL images
+        img = Image.fromarray(img)
+        noisy_img = Image.fromarray(noisy_img)
+
+        # apply the same data augmentation transformations to the input and the
+        # ground-truth
+        p = np.random.rand()
+        if self.transforms and p < 0.5:
+            self.t = T.Compose([T.RandomHorizontalFlip(1), T.ToTensor()])
+        else:
+            self.t = T.Compose([T.ToTensor()])
+        img = self.t(img)
+        noisy_img = self.t(noisy_img)
+        return noisy_img, img
+
+    def __len__(self):
+        return len(self.img_dict)
+
+
 # %%
 class Generator(nn.Module):
     def __init__(self):
@@ -253,24 +318,31 @@ features_extractor = FeatureExtractor()
 for param in features_extractor.parameters():
     param.requires_grad = False
 
+# %%
+Lambda = 10
+batch_size = 32   # 32 will make storage run out of storage
+num_epochs = 1
 
 # %%
 only_noise = False
-train_data = Noisedataset(only_noise, data_augmentation_factor, img_list=img_data, num_works=8, transform=train_transform, name="train")
-valid_data = Noisedataset(only_noise, data_augmentation_factor, img_list=val_data, num_works=8, transform=valid_transform, name="validation")
+train = NoisyDataset(img_list, 1, 0, 1, False, only_noise, name="train")
+val = NoisyDataset(val_list, 1, 0, 1, False, only_noise, name="validation")
 
+# %%
 torch.manual_seed(1)
-data_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
-val_data_loader = DataLoader(valid_data, batch_size=2, shuffle=False)
-# TODO: batch_size and num_workers setting
+data_loader = torch.utils.data.DataLoader(
+    train, batch_size=batch_size, shuffle=True, num_workers=2)
+
+val_data_loader = torch.utils.data.DataLoader(
+    val, batch_size=2, shuffle=False, num_workers=2)
 
 # %%
 generator = Generator()
 discriminator = Discriminator()
-# if torch.cuda.is_available():
-#     generator.cuda()
-#     discriminator.cuda()
-#     features_extractor.cuda()
+if torch.cuda.is_available():
+    generator.to(device)
+    discriminator.to(device)
+    features_extractor.to(device)
 d_optimizer = optim.Adam(discriminator.parameters(), lr=1e-5, betas=(0.5, 0.9))
 g_optimizer = optim.Adam(generator.parameters(), lr=1e-5, betas=(0.5, 0.999))
 
@@ -289,8 +361,9 @@ if __name__ == '__main__':
 
 # %%
     def calc_gradient_penalty(discriminator, real_data, fake_data, Lambda, batch_size=16):
-        # alpha = torch.rand(real_data.shape[0], 1).cuda()
-        alpha = torch.rand(real_data.shape[0], 1)
+        alpha_cpu = torch.rand(real_data.shape[0], 1)
+        alpha = alpha_cpu.to(device)
+        #alpha = torch.rand(real_data.shape[0], 1)
         alpha = alpha.expand(real_data.shape[0], int(real_data.nelement() / real_data.shape[0])).contiguous()
         alpha = alpha.view(real_data.shape[0], 1, dim, dim)
         interpolates = alpha * real_data + ((1 - alpha) * fake_data)
@@ -298,10 +371,11 @@ if __name__ == '__main__':
 
         disc_interpolates = discriminator(interpolates)
 
-        gradients = autograd.grad(outputs=disc_interpolates, inputs=interpolates,
-                              # grad_outputs=torch.ones(disc_interpolates.size()).cuda(),
-                              grad_outputs=torch.ones(disc_interpolates.size()),
+        grad_outputs_cpu = torch.ones(disc_interpolates.size())
+        grad_outputs = grad_outputs_cpu.to(device)
+        gradients = autograd.grad(outputs=disc_interpolates, inputs=interpolates,grad_outputs,
                               create_graph=True, retain_graph=True, only_inputs=True)[0]
+        # TODO: need to rewrite
         gradients = gradients.view(gradients.size(0), -1)
         gradient_penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean() * Lambda
         return gradient_penalty
@@ -358,8 +432,8 @@ if __name__ == '__main__':
                                      Lambda=10, lambda_2=10):
         # real_data = Normal DCT & input_img = Low DTC
         fake_data = generator(input_img)
-        # real_data = real_data.cuda()                      # add what you want
-        # input_img = input_img.cuda()
+        real_data = real_data.to(device)                      # add what you want
+        #input_img = input_img.to(device)
         prediction_real = discriminator(real_data)
         error_real = -torch.mean(prediction_real)
         prediction_fake = discriminator(fake_data.detach())
@@ -379,10 +453,10 @@ if __name__ == '__main__':
     for n_batch, (test_images, real_test_img) in enumerate(val_data_loader):
         if n_batch == 1:
             break
-        # input_test_img = test_images.cuda()
-        # real_test_img = real_test_img.cuda()
-        input_test_img = test_images
-        real_test_img = real_test_img
+        input_test_img = test_images.to(device)
+        real_test_img = real_test_img.to(device)
+        # input_test_img = test_images
+        # real_test_img = real_test_img
 
 
 # %%
@@ -473,18 +547,18 @@ if __name__ == '__main__':
 # %%
     name = '_wgan_vgg'
 
-# ============================ step 5/5  train ============================
-    for epoch in tqdm(range(num_epochs), desc="epoch"):
-        # for n_batch, (input_img, real_data) in tqdm(enumerate(data_loader), desc="Learning"):
-        for n_batch, (input_img, real_data) in enumerate(data_loader):
+# %%
+    for epoch in tqdm(range(num_epochs), desc= "Plot"):
+        time.sleep(0.5)
+        for n_batch, (input_img, real_data) in tqdm(enumerate(data_loader), desc="Learning"):
+            time.sleep(0.01)
             real_data = torch.tensor(real_data)  # transfer to tensor step. Change to dataset
-
-            # if torch.cuda.is_available():
-            #     real_data = real_data.cuda()
-            # if torch.cuda.is_available():
-            #     input_img = input_img.cuda()
-            # real_data = real_data.cuda()
-            # input_img = input_img.cuda()
+            if torch.cuda.is_available():
+                real_data = real_data.to(device)
+            if torch.cuda.is_available():
+                input_img = input_img.to(device)
+                real_data = real_data.to(device)
+                input_img = input_img.to(device)
             # Train D & G
             d_error, g_error, loss_vgg, penalty, p_real, p_fake, pred_images = train_discriminator_generator(d_optimizer,
                                                                                                          g_optimizer,
@@ -525,15 +599,23 @@ if __name__ == '__main__':
                             only_noise, plot=True,
                             epoch=str(epoch_) + "_" + str(n_batch))
                 gc.collect()
-            print(u'当前进程的内存使用：%.4f GB' % (psutil.Process(os.getpid()).memory_info().rss / 1024 / 1024 / 1024))
-#================================== memory info ===========================================================
-print(u'当前进程的内存使用：%.4f GB' % (psutil.Process(os.getpid()).memory_info().rss / 1024 / 1024 / 1024) )
-info = psutil.virtual_memory()
-print( u'电脑总内存：%.4f GB' % (info.total / 1024 / 1024 / 1024) )
-print(u'当前使用的总内存占比：',info.percent)
-print(u'cpu个数：',psutil.cpu_count())
 
+# %%
+#     fig, ax = plt.subplots(4, 2, figsize=(30, 20))
+#     ax = ax.flatten()
+#     i = 0
+#     for key, values in loss_function.items():
+#         #     if key in ['SSIM', 'loss_vgg', 'PSNR']:
+#         ax[i].plot(values['test'][2:], label='test')
+#         ax[i].plot(values['train'][2:], label='train')
+#         ax[i].set_title(key)
+#         ax[i].legend(loc='best')
+#         i = i + 1
 
-
-
+    # # %%
+    # torch.save(generator.state_dict(), 'generator' + name)
+    # torch.save(discriminator.state_dict(), 'discriminator' + name)
+    #
+    # np.save(name, loss_function)
+    # fig.savefig('loss_gen' + name + '.png')
 
