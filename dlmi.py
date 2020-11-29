@@ -57,7 +57,7 @@ p = progressbar.ProgressBar()
 import gc;
 gc.collect()
 
-device = torch.device("cuda")
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # %%
 dim = 64
@@ -170,7 +170,8 @@ class NoisyDataset(torch.utils.data.Dataset):
         noisy_img = img + noise
         noisy_img = (noisy_img - noisy_img.min()) / (noisy_img.max() - noisy_img.min())
         # if residual learning, ground-truth should be the noise
-        if self.only_noise: img = noise
+        if self.only_noise:
+            img = noise
 
         # convert to PIL images
         img = Image.fromarray(img)
@@ -338,10 +339,10 @@ val_data_loader = torch.utils.data.DataLoader(
 # %%
 generator = Generator()
 discriminator = Discriminator()
-# if torch.cuda.is_available():
-#     generator.cuda()
-#     discriminator.cuda()
-#     features_extractor.cuda()
+if torch.cuda.is_available():
+    generator.to(device)
+    discriminator.to(device)
+    features_extractor.to(device)
 d_optimizer = optim.Adam(discriminator.parameters(), lr=1e-5, betas=(0.5, 0.9))
 g_optimizer = optim.Adam(generator.parameters(), lr=1e-5, betas=(0.5, 0.999))
 
@@ -360,8 +361,9 @@ if __name__ == '__main__':
 
 # %%
     def calc_gradient_penalty(discriminator, real_data, fake_data, Lambda, batch_size=16):
-        # alpha = torch.rand(real_data.shape[0], 1).cuda()
-        alpha = torch.rand(real_data.shape[0], 1)
+        alpha_cpu = torch.rand(real_data.shape[0], 1)
+        alpha = alpha_cpu.to(device)
+        #alpha = torch.rand(real_data.shape[0], 1)
         alpha = alpha.expand(real_data.shape[0], int(real_data.nelement() / real_data.shape[0])).contiguous()
         alpha = alpha.view(real_data.shape[0], 1, dim, dim)
         interpolates = alpha * real_data + ((1 - alpha) * fake_data)
@@ -369,10 +371,11 @@ if __name__ == '__main__':
 
         disc_interpolates = discriminator(interpolates)
 
-        gradients = autograd.grad(outputs=disc_interpolates, inputs=interpolates,
-                              # grad_outputs=torch.ones(disc_interpolates.size()).cuda(),
-                              grad_outputs=torch.ones(disc_interpolates.size()),
+        grad_outputs_cpu = torch.ones(disc_interpolates.size())
+        grad_outputs = grad_outputs_cpu.to(device)
+        gradients = autograd.grad(outputs=disc_interpolates, inputs=interpolates,grad_outputs,
                               create_graph=True, retain_graph=True, only_inputs=True)[0]
+        # TODO: need to rewrite
         gradients = gradients.view(gradients.size(0), -1)
         gradient_penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean() * Lambda
         return gradient_penalty
@@ -429,8 +432,8 @@ if __name__ == '__main__':
                                      Lambda=10, lambda_2=10):
         # real_data = Normal DCT & input_img = Low DTC
         fake_data = generator(input_img)
-        # real_data = real_data.cuda()                      # add what you want
-        # input_img = input_img.cuda()
+        real_data = real_data.to(device)                      # add what you want
+        #input_img = input_img.to(device)
         prediction_real = discriminator(real_data)
         error_real = -torch.mean(prediction_real)
         prediction_fake = discriminator(fake_data.detach())
@@ -450,10 +453,10 @@ if __name__ == '__main__':
     for n_batch, (test_images, real_test_img) in enumerate(val_data_loader):
         if n_batch == 1:
             break
-        # input_test_img = test_images.cuda()
-        # real_test_img = real_test_img.cuda()
-        input_test_img = test_images
-        real_test_img = real_test_img
+        input_test_img = test_images.to(device)
+        real_test_img = real_test_img.to(device)
+        # input_test_img = test_images
+        # real_test_img = real_test_img
 
 
 # %%
@@ -549,13 +552,13 @@ if __name__ == '__main__':
         time.sleep(0.5)
         for n_batch, (input_img, real_data) in tqdm(enumerate(data_loader), desc="Learning"):
             time.sleep(0.01)
-            # real_data = Variable(real_data)  # transfer to tensor step. Change to dataset
-            # if torch.cuda.is_available():
-            #     real_data = real_data.cuda()
-            # if torch.cuda.is_available():
-            #     input_img = input_img.cuda()
-            # real_data = real_data.cuda()
-            # input_img = input_img.cuda()
+            real_data = torch.tensor(real_data)  # transfer to tensor step. Change to dataset
+            if torch.cuda.is_available():
+                real_data = real_data.to(device)
+            if torch.cuda.is_available():
+                input_img = input_img.to(device)
+                real_data = real_data.to(device)
+                input_img = input_img.to(device)
             # Train D & G
             d_error, g_error, loss_vgg, penalty, p_real, p_fake, pred_images = train_discriminator_generator(d_optimizer,
                                                                                                          g_optimizer,
