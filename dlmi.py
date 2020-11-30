@@ -56,8 +56,10 @@ p = progressbar.ProgressBar()
 
 import gc;
 gc.collect()
+os.environ['CUDA_VISIBLE_DEVICES']='1'
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+# torch.backends.cudnn.enabled = False
 
 # %%
 dim = 64
@@ -119,8 +121,9 @@ class NoisyDataset(torch.utils.data.Dataset):
             - name: string - name of the dataset (train, validation or test)
             - only_noise: bool - whether or not to do residual learning
         """
-        np.random.seed(0)
-
+        # np.random.seed(0)
+        seed = 2
+        torch.cuda.manual_seed(seed)
         if not data_augmentation_factor:
             self.data_augmentation_factor = 1
         else:
@@ -151,8 +154,9 @@ class NoisyDataset(torch.utils.data.Dataset):
         self.img_dict = {image_id: info for image_id, info in enumerate(dicts)}
 
     def __getitem__(self, image_id):
-        np.random.seed(0)
-
+        # np.random.seed(0)
+        seed = 2
+        torch.cuda.manual_seed(seed)
         # load image
         # img = imageio.imread(self.img_dict[image_id]['path']).astype(np.uint8)
         img = self.img_dict[image_id]['path']
@@ -320,7 +324,7 @@ for param in features_extractor.parameters():
 
 # %%
 Lambda = 10
-batch_size = 32   # 32 will make storage run out of storage
+batch_size = 16   # 32 will make storage run out of storage
 num_epochs = 1
 
 # %%
@@ -329,12 +333,12 @@ train = NoisyDataset(img_list, 1, 0, 1, False, only_noise, name="train")
 val = NoisyDataset(val_list, 1, 0, 1, False, only_noise, name="validation")
 
 # %%
-torch.manual_seed(1)
+torch.cuda.manual_seed(1)
 data_loader = torch.utils.data.DataLoader(
-    train, batch_size=batch_size, shuffle=True, num_workers=2)
+    train, batch_size=batch_size, shuffle=True, num_workers=1)
 
 val_data_loader = torch.utils.data.DataLoader(
-    val, batch_size=2, shuffle=False, num_workers=2)
+    val, batch_size=2, shuffle=False, num_workers=1)
 
 # %%
 generator = Generator()
@@ -345,6 +349,7 @@ if torch.cuda.is_available():
     features_extractor.to(device)
 d_optimizer = optim.Adam(discriminator.parameters(), lr=1e-5, betas=(0.5, 0.9))
 g_optimizer = optim.Adam(generator.parameters(), lr=1e-5, betas=(0.5, 0.999))
+
 
 if __name__ == '__main__':
     freeze_support()
@@ -361,6 +366,9 @@ if __name__ == '__main__':
 
 # %%
     def calc_gradient_penalty(discriminator, real_data, fake_data, Lambda, batch_size=16):
+        if torch.cuda.is_available():
+            real_data = real_data.to(device)
+            fake_data = fake_data.to(device)
         alpha_cpu = torch.rand(real_data.shape[0], 1)
         alpha = alpha_cpu.to(device)
         #alpha = torch.rand(real_data.shape[0], 1)
@@ -372,8 +380,8 @@ if __name__ == '__main__':
         disc_interpolates = discriminator(interpolates)
 
         grad_outputs_cpu = torch.ones(disc_interpolates.size())
-        grad_outputs = grad_outputs_cpu.to(device)
-        gradients = autograd.grad(outputs=disc_interpolates, inputs=interpolates,grad_outputs,
+        grad_outputs_gpu = grad_outputs_cpu.to(device)
+        gradients = autograd.grad(outputs=disc_interpolates, inputs=interpolates, grad_outputs = grad_outputs_gpu,
                               create_graph=True, retain_graph=True, only_inputs=True)[0]
         # TODO: need to rewrite
         gradients = gradients.view(gradients.size(0), -1)
@@ -386,6 +394,9 @@ if __name__ == '__main__':
         # real_data = Normal DCT & input_img = Low DTC
         # 1. Train Discriminator
         # Reset gradients
+        if torch.cuda.is_available():
+            real_data = real_data.to(device)
+            input_img = input_img.to(device)
         fake_data = generator(input_img)
         for k in range(2):
             optimizer_d.zero_grad()
@@ -431,9 +442,11 @@ if __name__ == '__main__':
                                      batch_size, loss_function,
                                      Lambda=10, lambda_2=10):
         # real_data = Normal DCT & input_img = Low DTC
+        if torch.cuda.is_available():
+            real_data = real_data.to(device)
+        if torch.cuda.is_available():
+            input_img = input_img.to(device)
         fake_data = generator(input_img)
-        real_data = real_data.to(device)                      # add what you want
-        #input_img = input_img.to(device)
         prediction_real = discriminator(real_data)
         error_real = -torch.mean(prediction_real)
         prediction_fake = discriminator(fake_data.detach())
@@ -453,10 +466,21 @@ if __name__ == '__main__':
     for n_batch, (test_images, real_test_img) in enumerate(val_data_loader):
         if n_batch == 1:
             break
-        input_test_img = test_images.to(device)
-        real_test_img = real_test_img.to(device)
-        # input_test_img = test_images
-        # real_test_img = real_test_img
+        input_test_img = test_images
+        real_test_img = real_test_img
+
+        if torch.cuda.is_available():
+            input_test_img = input_test_img.to(device)
+            real_test_img = real_test_img.to(device)
+            try:
+                output = nn.MSELoss(input)
+            except RuntimeError as exception:
+                if "out of memory" in str(exception):
+                    print("WARNING: out of memory")
+                    if hasattr(torch.cuda, 'empty_cache'):
+                        torch.cuda.empty_cache()
+                else:
+                    raise exception
 
 
 # %%
@@ -498,8 +522,8 @@ if __name__ == '__main__':
             epoch, num_epochs, n_batch, batch_))
         print('Discriminator Loss: {:.4f}, Generator Loss: {:.4f}'.format(d_error, g_error))
         print('D(x): {:.4f}, D(G(z)): {:.4f}'.format(p_real, p_fake))
-        print('Loss VGG : {:.4f}'.format(loss_vgg.data.cpu()))
-        print('Gradient penalty : {:.4f}'.format(penalty.data.cpu()))
+        print('Loss VGG : {:.4f}'.format(loss_vgg.data.to("cpu")))
+        print('Gradient penalty : {:.4f}'.format(penalty.data.to("cpu")))
 
 
     def MSE(image_true, image_generated):
@@ -508,7 +532,7 @@ if __name__ == '__main__':
 
     def PSNR(image_true, image_generated):
         mse = MSE(image_true, image_generated)
-        return -10 * torch.log10(mse)
+        return (-10 * torch.log10(mse))
 
 
     def SSIM(image_true, image_generated, C1=0.01, C2=0.03):
@@ -550,15 +574,27 @@ if __name__ == '__main__':
 # %%
     for epoch in tqdm(range(num_epochs), desc= "Plot"):
         time.sleep(0.5)
-        for n_batch, (input_img, real_data) in tqdm(enumerate(data_loader), desc="Learning"):
-            time.sleep(0.01)
+        # for n_batch, (input_img, real_data) in tqdm(enumerate(data_loader), desc="Learning"):
+        # time.sleep(0.01)
+        for n_batch, (input_img, real_data) in enumerate(data_loader):
+
+            input_img = torch.tensor(input_img)
             real_data = torch.tensor(real_data)  # transfer to tensor step. Change to dataset
+
             if torch.cuda.is_available():
                 real_data = real_data.to(device)
-            if torch.cuda.is_available():
                 input_img = input_img.to(device)
-                real_data = real_data.to(device)
-                input_img = input_img.to(device)
+
+                try:
+                    output = nn.MSELoss(input)
+                except RuntimeError as exception:
+                    if "out of memory" in str(exception):
+                        print("WARNING: out of memory")
+                        if hasattr(torch.cuda, 'empty_cache'):
+                            torch.cuda.empty_cache()
+                    else:
+                        raise exception
+
             # Train D & G
             d_error, g_error, loss_vgg, penalty, p_real, p_fake, pred_images = train_discriminator_generator(d_optimizer,
                                                                                                          g_optimizer,
@@ -567,11 +603,18 @@ if __name__ == '__main__':
                                                                                                          loss_function=vgg_loss,
                                                                                                          batch_size=batch_size)
 
-            #         pred_images = generator(input_img)
-            #         g_optimizer.zero_grad()
-            #         loss_vgg = nn.MSELoss()(pred_images, real_data); loss_vgg.backward()
-            #         g_optimizer.step()
+            pred_images = generator(input_img)
+            g_optimizer.zero_grad()
+            if torch.cuda.is_available():
+                nn.Module.to(device)          #write by myself
+            loss_vgg = nn.MSELoss()(pred_images, real_data);
+            loss_vgg.backward()
+            g_optimizer.step()
             # Display Progress
+            if torch.cuda.is_available():
+                real_data = real_data.to(device)
+                input_img = input_img.to(device)
+
             if (n_batch) % 120 == 0:
                 display.clear_output(False)
                 # Display Images
@@ -580,14 +623,14 @@ if __name__ == '__main__':
                 update_loss_function(d_error, g_error, loss_vgg,
                                  penalty, p_real, p_fake, psnr, ssim, mode='train')
                 d_error, g_error, loss_vgg_test, penalty, p_real, p_fake, pred_images = validate_discriminator_generator(real_test_img, input_test_img, batch_size=2, loss_function=vgg_loss)
-                #             pred_images = generator(input_test_img)
-                #             loss_vgg_test = nn.MSELoss()(real_test_img, pred_images)
+                pred_images = generator(input_test_img)
+                loss_vgg_test = nn.MSELoss()(real_test_img, pred_images)
                 psnr = PSNR(real_test_img, pred_images)
                 ssim = SSIM(real_test_img, pred_images)
                 update_loss_function(d_error, g_error, loss_vgg_test,
                                  penalty, p_real, p_fake, psnr, ssim, mode='test')
 
-                #             pred_images = generator(input_test_img.cuda()).data.cpu()
+                pred_images = generator(input_test_img.to(device)).data.to("cpu")
                 display_status(epoch, num_epochs + 10, n_batch,
                            p_real, loss_vgg, p_fake, penalty,
                            batch_=int(len(data_loader.dataset) / batch_size))
