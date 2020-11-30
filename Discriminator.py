@@ -1,6 +1,7 @@
-#%%
-
-class Discriminator(torch.nn.Module):
+import torch
+from torch import nn
+out_shape = 8
+class Discriminator(nn.Module):
 
     def __init__(self):
         super(Discriminator, self).__init__()
@@ -43,7 +44,7 @@ class Discriminator(torch.nn.Module):
         )
 
         self.linear = nn.Sequential(
-            torch.nn.Linear(256 * out_shape**2, 1024),
+            torch.nn.Linear(256 * out_shape ** 2, 1024),
             nn.LeakyReLU(inplace=True)
         )
         self.out = nn.Sequential(
@@ -59,10 +60,10 @@ class Discriminator(torch.nn.Module):
         x = self.conv4(x)
         x = self.conv5(x)
         x = self.conv6(x)
-        #print(x.shape)
+        # print(x.shape)
         # Flatten and apply sigmoid
-#         print(x.shape)
-        x = x.view(-1, 256 * out_shape**2)
+        #         print(x.shape)
+        x = x.view(-1, 256 * out_shape ** 2)
         x = self.linear(x)
         x = self.out(x)
         return x

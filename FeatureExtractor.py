@@ -1,3 +1,6 @@
+import torch
+from torch import nn
+import torchvision.models as models
 
 
 class FeatureExtractor(nn.Module):
@@ -14,7 +17,4 @@ class FeatureExtractor(nn.Module):
         x[:, 2,:,:]-=123.68
         out = self.feature_extractor(x)
         return out
-features_extractor = FeatureExtractor()
-for param in features_extractor.parameters():
-    param.requires_grad = False
 

@@ -13,57 +13,55 @@ A.
 # %%
 # General Libraries
 import os
-
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
-import random
-import shutil
-import matplotlib.pyplot as plt
-from IPython import display
-# from utils import Logger
+
 # Pytorch Libraries
 import torch
-import torchvision as tv
-import torchvision.transforms as T
 import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim as optim
+from torch import autograd
 
-# import zipfile   # no
+# figure
 import h5py
-# import time      # no
-import torchvision.models as models
-# Modelisation Libraries
 import numpy as np
 from PIL import Image
-from tqdm import tqdm
-from glob import glob  # only glob2
-
-import imageio
 import matplotlib.pyplot as plt
-from skimage.transform import resize
-
 from IPython import display
-# from utils import Logger
-import torch
-from torch import nn, optim
-from torch import autograd
-from torch.autograd.variable import Variable
-from torchvision import transforms, datasets
+from glob import glob  # only glob2
 from multiprocessing import freeze_support
+
+
+#
+from tqdm import tqdm
 import time
 import progressbar
 p = progressbar.ProgressBar()
-
 import gc;
 gc.collect()
-os.environ['CUDA_VISIBLE_DEVICES']='1'
 
+# cuda
+os.environ['CUDA_VISIBLE_DEVICES']='1'
 device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
 # torch.backends.cudnn.enabled = False
 
+# class
+from Generator import Generator
+from Noisedataset import NoiseDataset
+from Discriminator import Discriminator
+from FeatureExtractor import FeatureExtractor
+
+# NO USE
+# import random
+# import shutil
+# import imageio
+# from torch.autograd.variable import Variable
+# import torch.nn.functional as F
+#
+# from skimage.transform import resize
+# from utils import Logger
+
 # %%
 dim = 64
-out_shape = 8
 BASE_DIR = os.path.abspath('')
 dataset_LDCT = os.path.abspath(os.path.join(BASE_DIR, "..", "LoDoPaB_CT_Dataset"))
 datasave_kaggle = os.path.abspath(os.path.join(BASE_DIR, "..", "Lowdose_program", "GAN_RESULT", "2020_11_13"))
@@ -106,218 +104,6 @@ print(len(img_list))
 plt.imshow(X_train[0][26])
 
 
-# %%
-class NoisyDataset(torch.utils.data.Dataset):
-
-    def __init__(self, img_list, data_augmentation_factor, mu, var, transforms=True, only_noise=False, name="train"):
-        """
-        Arguments:
-            - img_list: list of the images paths
-            - data_augmentation_factor: int - number of times an image is augmented. Set
-            it to 0 if no augmentation is wanted.
-            - mu: mean of the training set - used for standardization
-            - var: standard deviation of the training set - used for standardization
-            - transforms: bool - indicates whether to apply data augmentation 
-            - name: string - name of the dataset (train, validation or test)
-            - only_noise: bool - whether or not to do residual learning
-        """
-        # np.random.seed(0)
-        seed = 2
-        torch.cuda.manual_seed(seed)
-        if not data_augmentation_factor:
-            self.data_augmentation_factor = 1
-        else:
-            self.data_augmentation_factor = data_augmentation_factor
-        self.img_list = img_list
-        self.transforms = transforms
-        self.only_noise = only_noise
-        self.name = name
-        self.mean = mu
-        self.std = var
-
-        # Create dictionary that maps each image to some specific noise and the
-        # image's path
-        dicts = []
-        for image_path in img_list:
-            for _ in range(self.data_augmentation_factor):
-
-                # Define noise to be applied
-                p = np.random.rand()
-                if p < 1:
-                    noise_type = "gaussian"
-                else:
-                    noise_type = "speckle"
-
-                # Add image-noise pair information to the info dictionary
-                dicts.append({'path': image_path,
-                              'noise': noise_type})
-        self.img_dict = {image_id: info for image_id, info in enumerate(dicts)}
-
-    def __getitem__(self, image_id):
-        # np.random.seed(0)
-        seed = 2
-        torch.cuda.manual_seed(seed)
-        # load image
-        # img = imageio.imread(self.img_dict[image_id]['path']).astype(np.uint8)
-        img = self.img_dict[image_id]['path']
-        # standardize it
-        #img = (img - img.min()) /(img.max() - img.min())
-        # downsample the images' size (to speed up training)
-        img = resize(img, (dim, dim))
-
-        # create noisy image
-        noise_type = self.img_dict[image_id]['noise']
-        if noise_type == "gaussian":
-            noise = np.random.normal(0, 0.015, img.shape)
-        elif noise_type == "speckle":
-            noise = img * np.random.randn(img.shape[0], img.shape[1]) / 5
-        noisy_img = img + noise
-        noisy_img = (noisy_img - noisy_img.min()) / (noisy_img.max() - noisy_img.min())
-        # if residual learning, ground-truth should be the noise
-        if self.only_noise:
-            img = noise
-
-        # convert to PIL images
-        img = Image.fromarray(img)
-        noisy_img = Image.fromarray(noisy_img)
-
-        # apply the same data augmentation transformations to the input and the
-        # ground-truth
-        p = np.random.rand()
-        if self.transforms and p < 0.5:
-            self.t = T.Compose([T.RandomHorizontalFlip(1), T.ToTensor()])
-        else:
-            self.t = T.Compose([T.ToTensor()])
-        img = self.t(img)
-        noisy_img = self.t(noisy_img)
-        return noisy_img, img
-
-    def __len__(self):
-        return len(self.img_dict)
-
-
-# %%
-class Generator(nn.Module):
-    def __init__(self):
-        super(Generator, self).__init__()
-        """ FILL HERE """
-        self.convlayers = nn.Sequential(
-            nn.Conv2d(in_channels=1, out_channels=32, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(),
-
-            nn.Conv2d(in_channels=32, out_channels=32, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(),
-
-            nn.Conv2d(in_channels=32, out_channels=32, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(),
-
-            nn.Conv2d(in_channels=32, out_channels=32, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(),
-
-            nn.Conv2d(in_channels=32, out_channels=32, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(),
-
-            nn.Conv2d(in_channels=32, out_channels=32, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(),
-
-            nn.Conv2d(in_channels=32, out_channels=32, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(),
-
-            nn.Conv2d(in_channels=32, out_channels=1, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(),
-        )
-
-    def forward(self, x):
-        x = self.convlayers(x)
-        return x
-
-
-# %%
-class Discriminator(torch.nn.Module):
-
-    def __init__(self):
-        super(Discriminator, self).__init__()
-        self.conv1 = nn.Sequential(
-            nn.Conv2d(
-                in_channels=1, out_channels=64, kernel_size=3,
-                stride=1, padding=1),
-            nn.LeakyReLU(0.2, inplace=True)
-        )
-        self.conv2 = nn.Sequential(
-            nn.Conv2d(
-                in_channels=64, out_channels=64, kernel_size=3,
-                stride=2, padding=1),
-            nn.LeakyReLU(0.2, inplace=True)
-        )
-        self.conv3 = nn.Sequential(
-            nn.Conv2d(
-                in_channels=64, out_channels=128, kernel_size=3,
-                stride=1, padding=1),
-            nn.LeakyReLU(0.2, inplace=True)
-        )
-        self.conv4 = nn.Sequential(
-            nn.Conv2d(
-                in_channels=128, out_channels=128, kernel_size=3,
-                stride=2, padding=1),
-            nn.LeakyReLU(0.2, inplace=True)
-        )
-
-        self.conv5 = nn.Sequential(
-            nn.Conv2d(
-                in_channels=128, out_channels=256, kernel_size=3,
-                stride=1, padding=1),
-            nn.LeakyReLU(0.2, inplace=True)
-        )
-        self.conv6 = nn.Sequential(
-            nn.Conv2d(
-                in_channels=256, out_channels=256, kernel_size=3,
-                stride=2, padding=1),
-            nn.LeakyReLU(0.2, inplace=True)
-        )
-
-        self.linear = nn.Sequential(
-            torch.nn.Linear(256 * out_shape ** 2, 1024),
-            nn.LeakyReLU(inplace=True)
-        )
-        self.out = nn.Sequential(
-            nn.Linear(1024, 1),
-            nn.Sigmoid(),
-        )
-
-    def forward(self, x):
-        # Convolutional layers
-        x = self.conv1(x)
-        x = self.conv2(x)
-        x = self.conv3(x)
-        x = self.conv4(x)
-        x = self.conv5(x)
-        x = self.conv6(x)
-        # print(x.shape)
-        # Flatten and apply sigmoid
-        #         print(x.shape)
-        x = x.view(-1, 256 * out_shape ** 2)
-        x = self.linear(x)
-        x = self.out(x)
-        return x
-
-
-# %%
-class FeatureExtractor(nn.Module):
-    def __init__(self):
-        super(FeatureExtractor, self).__init__()
-        vgg19_model = models.vgg19(pretrained=True)
-        self.feature_extractor = nn.Sequential(*list(vgg19_model.features.children())[:35])
-
-    def forward(self, x):
-        x = x * 255.0
-        x = x.repeat(1, 3, 1, 1)
-        x[:, 0, :, :] -= 103.939
-        x[:, 1, :, :] -= 116.779
-        x[:, 2, :, :] -= 123.68
-        out = self.feature_extractor(x)
-        return out
-
-
 features_extractor = FeatureExtractor()
 for param in features_extractor.parameters():
     param.requires_grad = False
@@ -329,8 +115,8 @@ num_epochs = 1
 
 # %%
 only_noise = False
-train = NoisyDataset(img_list, 1, 0, 1, False, only_noise, name="train")
-val = NoisyDataset(val_list, 1, 0, 1, False, only_noise, name="validation")
+train = NoiseDataset(img_list, 1, 0, 1, dim, False, only_noise, name="train")
+val = NoiseDataset(val_list, 1, 0, 1, dim, False, only_noise, name="validation")
 
 # %%
 torch.cuda.manual_seed(1)
