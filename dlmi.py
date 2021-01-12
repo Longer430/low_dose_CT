@@ -1,20 +1,20 @@
-# %%
+# -- coding: utf-8 --
 """
 # DLMI PROJECT : Low-Dose CT Image Denoising
 
-# # @file name  : Noisydataset.py
+# # @file       : main code. begin from this code
 # # @author     : Wenting LONG
-# # @date       : 2020-11-5
-# # @brief      : Dataset定义
+# # @date       : 2020-12-27
+# # @brief      : Dataset
 # # 1. I only delete the .cuda() and reset the reading path and this has 3 problems.
 A.
 """
 
-# %%
-# General Libraries
+# %% import
 import os
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
+import nni
 # Pytorch Libraries
 import torch
 import torch.nn as nn
@@ -28,7 +28,7 @@ from PIL import Image
 import matplotlib.pyplot as plt
 from IPython import display
 from glob import glob  # only glob2
-from multiprocessing import freeze_support
+#from multiprocessing import freeze_support
 
 
 #
@@ -61,14 +61,15 @@ from FeatureExtractor import FeatureExtractor
 # from utils import Logger
 
 # %%
+
 dim = 64
 BASE_DIR = os.path.abspath('')
 dataset_LDCT = os.path.abspath(os.path.join(BASE_DIR, "..", "LoDoPaB_CT_Dataset"))
 datasave_kaggle = os.path.abspath(os.path.join(BASE_DIR, "..", "Lowdose_program", "GAN_RESULT", "2020_11_13"))
-print(dataset_LDCT)
-print(BASE_DIR)
+# print(dataset_LDCT)
+# print(BASE_DIR)
 
-# %%
+# %% read image
 img_dir = os.path.join(dataset_LDCT, "ground_truth_validation")
 name_list = list()                                          # validation images paths
 for root, _, files in os.walk(img_dir):
@@ -88,7 +89,7 @@ for root, _, files in os.walk(img_dir_test):
 X_test = [h5py.File(i, 'r')['data'] for i in name_list_test]
 X_train = X_train + X_test
 
-# %%
+# %% put image into list
 img_list = list()
 for k in range(49):
     for i in range(128):
@@ -97,28 +98,27 @@ val_list = list()
 for k in range(49, 54):
     for i in range(128):
         val_list.append(X_train[k][i])
-print(len(val_list))
-print(len(img_list))
+# print(len(val_list))
+# print(len(img_list))
 
-# %%
 plt.imshow(X_train[0][26])
-
-
+# TODO: features_extractor???
 features_extractor = FeatureExtractor()
 for param in features_extractor.parameters():
     param.requires_grad = False
 
-# %%
+# %% epoch and batch size
 Lambda = 10
-batch_size = 16   # 32 will make storage run out of storage
+"""@nni.variable(nni.choice(8, 16, 32), name=batch_size)"""
+batch_size = 8   # 32 will make storage run out of storage
 num_epochs = 1
 
-# %%
+# %% dataset
 only_noise = False
 train = NoiseDataset(img_list, 1, 0, 1, dim, False, only_noise, name="train")
 val = NoiseDataset(val_list, 1, 0, 1, dim, False, only_noise, name="validation")
 
-# %%
+# %% dataloader
 torch.cuda.manual_seed(1)
 data_loader = torch.utils.data.DataLoader(
     train, batch_size=batch_size, shuffle=True, num_workers=1)
@@ -126,7 +126,7 @@ data_loader = torch.utils.data.DataLoader(
 val_data_loader = torch.utils.data.DataLoader(
     val, batch_size=2, shuffle=False, num_workers=1)
 
-# %%
+# %% define generator, discriminator and optimizer
 generator = Generator()
 discriminator = Discriminator()
 if torch.cuda.is_available():
@@ -136,10 +136,10 @@ if torch.cuda.is_available():
 d_optimizer = optim.Adam(discriminator.parameters(), lr=1e-5, betas=(0.5, 0.9))
 g_optimizer = optim.Adam(generator.parameters(), lr=1e-5, betas=(0.5, 0.999))
 
-
+# %% train
 if __name__ == '__main__':
-    freeze_support()
-# %%
+   # freeze_support()
+# %% define vgg_loss
     def vgg_loss(pred, gt, features_extractor=features_extractor):
         # vgg_pred = features_extractor(pred)
         vgg_gt = features_extractor(gt)
@@ -150,7 +150,7 @@ if __name__ == '__main__':
         return mse(vgg_pred, vgg_gt)
 
 
-# %%
+# %% define calc_gradient_penalty
     def calc_gradient_penalty(discriminator, real_data, fake_data, Lambda, batch_size=16):
         if torch.cuda.is_available():
             real_data = real_data.to(device)
@@ -174,7 +174,7 @@ if __name__ == '__main__':
         gradient_penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean() * Lambda
         return gradient_penalty
 
-
+# %%  define train_discriminator_generator, validate_discriminator_generator
     def train_discriminator_generator(optimizer_d, optimizer_g, real_data, input_img,
                                   batch_size, loss_function, Lambda=10, lambda_2=10):
         # real_data = Normal DCT & input_img = Low DTC
@@ -248,7 +248,7 @@ if __name__ == '__main__':
         return loss_discriminator, loss_generator, loss_vgg, gradient_penalty, error_real.mean(), error_fake.mean(), fake_data
 
 
-# %%
+# %% test dataset
     for n_batch, (test_images, real_test_img) in enumerate(val_data_loader):
         if n_batch == 1:
             break
@@ -258,18 +258,18 @@ if __name__ == '__main__':
         if torch.cuda.is_available():
             input_test_img = input_test_img.to(device)
             real_test_img = real_test_img.to(device)
-            try:
-                output = nn.MSELoss(input)
-            except RuntimeError as exception:
-                if "out of memory" in str(exception):
-                    print("WARNING: out of memory")
-                    if hasattr(torch.cuda, 'empty_cache'):
-                        torch.cuda.empty_cache()
-                else:
-                    raise exception
+            # try:
+            #     output = nn.MSELoss(input)
+            # except RuntimeError as exception:
+            #     if "out of memory" in str(exception):
+            #         print("WARNING: out of memory")
+            #         if hasattr(torch.cuda, 'empty_cache'):
+            #             torch.cuda.empty_cache()
+            #     else:
+            #         raise exception
 
 
-# %%
+# %% plot_prediction
     def plot_prediction(inputs, outputs, ground_truth, only_noise, plot=False, epoch='0'):
         size = inputs.shape
         inputs = np.vstack(inputs.data.cpu().numpy().reshape(size[0], size[2], size[3]))
@@ -304,12 +304,13 @@ if __name__ == '__main__':
     def display_status(epoch, num_epochs, n_batch,
                     p_real, loss_vgg, p_fake, penalty,
                     batch_=int(len(data_loader.dataset) / batch_size)):
-        print('Epoch: [{}/{}], Batch Num: [{}/{}]'.format(
-            epoch, num_epochs, n_batch, batch_))
-        print('Discriminator Loss: {:.4f}, Generator Loss: {:.4f}'.format(d_error, g_error))
-        print('D(x): {:.4f}, D(G(z)): {:.4f}'.format(p_real, p_fake))
-        print('Loss VGG : {:.4f}'.format(loss_vgg.data.to("cpu")))
-        print('Gradient penalty : {:.4f}'.format(penalty.data.to("cpu")))
+        # print('Epoch: [{}/{}], Batch Num: [{}/{}]'.format(
+        #     epoch, num_epochs, n_batch, batch_))
+        # print('Discriminator Loss: {:.4f}, Generator Loss: {:.4f}'.format(d_error, g_error))
+        # print('D(x): {:.4f}, D(G(z)): {:.4f}'.format(p_real, p_fake))
+        # print('Loss VGG : {:.4f}'.format(loss_vgg.data.to("cpu")))
+        # print('Gradient penalty : {:.4f}'.format(penalty.data.to("cpu")))
+        pass
 
 
     def MSE(image_true, image_generated):
@@ -354,34 +355,37 @@ if __name__ == '__main__':
 
 
 
-# %%
+# %% name = '_wgan_vgg'
     name = '_wgan_vgg'
 
-# %%
+
+# %% learning
+
     for epoch in tqdm(range(num_epochs), desc= "Plot"):
         time.sleep(0.5)
         # for n_batch, (input_img, real_data) in tqdm(enumerate(data_loader), desc="Learning"):
         # time.sleep(0.01)
+
         for n_batch, (input_img, real_data) in enumerate(data_loader):
 
-            input_img = torch.tensor(input_img)
-            real_data = torch.tensor(real_data)  # transfer to tensor step. Change to dataset
+            input_img = input_img.detach().clone()
+            real_data = real_data.detach().clone() # transfer to tensor step. Change to dataset
 
             if torch.cuda.is_available():
                 real_data = real_data.to(device)
                 input_img = input_img.to(device)
 
-                try:
-                    output = nn.MSELoss(input)
-                except RuntimeError as exception:
-                    if "out of memory" in str(exception):
-                        print("WARNING: out of memory")
-                        if hasattr(torch.cuda, 'empty_cache'):
-                            torch.cuda.empty_cache()
-                    else:
-                        raise exception
+                # try:
+                #     output = nn.MSELoss(input)
+                # except RuntimeError as exception:
+                #     if "out of memory" in str(exception):
+                #         print("WARNING: out of memory")
+                #         if hasattr(torch.cuda, 'empty_cache'):
+                #             torch.cuda.empty_cache()
+                #     else:
+                #         raise exception
 
-            # Train D & G
+            # step1: Train D & G
             d_error, g_error, loss_vgg, penalty, p_real, p_fake, pred_images = train_discriminator_generator(d_optimizer,
                                                                                                          g_optimizer,
                                                                                                          real_data,
@@ -391,32 +395,49 @@ if __name__ == '__main__':
 
             pred_images = generator(input_img)
             g_optimizer.zero_grad()
+
+            ## loss funtion
             if torch.cuda.is_available():
                 nn.Module.to(device)          #write by myself
-            loss_vgg = nn.MSELoss()(pred_images, real_data);
+            loss_vgg = nn.MSELoss()(pred_images, real_data)
             loss_vgg.backward()
             g_optimizer.step()
-            # Display Progress
+
+
             if torch.cuda.is_available():
                 real_data = real_data.to(device)
                 input_img = input_img.to(device)
 
+            ## display
             if (n_batch) % 120 == 0:
+
+                ## Display Progress
                 display.clear_output(False)
                 # Display Images
                 psnr = PSNR(real_data, pred_images)
                 ssim = SSIM(real_data, pred_images)
+
+                ## update_loss_function 1
                 update_loss_function(d_error, g_error, loss_vgg,
                                  penalty, p_real, p_fake, psnr, ssim, mode='train')
+
+                ## validate_discriminator_generator
                 d_error, g_error, loss_vgg_test, penalty, p_real, p_fake, pred_images = validate_discriminator_generator(real_test_img, input_test_img, batch_size=2, loss_function=vgg_loss)
                 pred_images = generator(input_test_img)
+
+                ## loss fuction test
                 loss_vgg_test = nn.MSELoss()(real_test_img, pred_images)
                 psnr = PSNR(real_test_img, pred_images)
+
                 ssim = SSIM(real_test_img, pred_images)
+
+                ## update_loss_function 2
                 update_loss_function(d_error, g_error, loss_vgg_test,
                                  penalty, p_real, p_fake, psnr, ssim, mode='test')
 
                 pred_images = generator(input_test_img.to(device)).data.to("cpu")
+
+                ## display
                 display_status(epoch, num_epochs + 10, n_batch,
                            p_real, loss_vgg, p_fake, penalty,
                            batch_=int(len(data_loader.dataset) / batch_size))
@@ -428,6 +449,11 @@ if __name__ == '__main__':
                             only_noise, plot=True,
                             epoch=str(epoch_) + "_" + str(n_batch))
                 gc.collect()
+        A = loss_vgg.data.item()
+        #print(A)
+"""@nni.report_final_result(A)"""
+
+    
 
 # %%
 #     fig, ax = plt.subplots(4, 2, figsize=(30, 20))
